@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speech Emotion Detection – LSTM Dashboard</title>
+  <meta name="description" content="Interactive dashboard for real-time speech emotion detection powered by an LSTM neural network trained on the RAVDESS dataset." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════════════════ -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo-group">
+      <span class="logo-icon">🎙️</span>
+      <div>
+        <h1 class="logo-title">EmoSense AI</h1>
+        <p class="logo-sub">Speech Emotion Detection · LSTM</p>
+      </div>
+    </div>
+    <nav class="header-nav">
+      <a href="#hero"     class="nav-link active" data-section="hero">Dashboard</a>
+      <a href="#predict"  class="nav-link"         data-section="predict">Predict</a>
+      <a href="#training" class="nav-link"         data-section="training">Training</a>
+      <a href="#dataset"  class="nav-link"         data-section="dataset">Dataset</a>
+    </nav>
+    <div class="status-badge" id="model-status">
+      <span class="pulse-dot"></span>
+      <span>Model Ready</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     HERO KPI STRIP
+═══════════════════════════════════════════════════════════ -->
+<section class="hero-section" id="hero">
+  <div class="hero-bg-glow"></div>
+  <div class="container">
+    <div class="hero-headline">
+      <span class="hero-badge">RAVDESS Dataset · LSTM Model</span>
+      <h2 class="hero-title">Real‑Time<br /><span class="gradient-text">Emotion Detection</span></h2>
+      <p class="hero-description">Upload any speech audio and instantly discover the underlying emotion — powered by a deep LSTM network trained on 24 professional actors across 8 distinct emotional categories.</p>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" id="kpi-samples">
+        <div class="kpi-icon">🎵</div>
+        <div class="kpi-value counter" data-target="{{ total_samples }}">0</div>
+        <div class="kpi-label">Audio Samples</div>
+      </div>
+      <div class="kpi-card" id="kpi-emotions">
+        <div class="kpi-icon">🎭</div>
+        <div class="kpi-value counter" data-target="{{ num_classes }}">0</div>
+        <div class="kpi-label">Emotion Classes</div>
+      </div>
+      <div class="kpi-card" id="kpi-actors">
+        <div class="kpi-icon">🎤</div>
+        <div class="kpi-value counter" data-target="{{ actors }}">0</div>
+        <div class="kpi-label">Actors</div>
+      </div>
+      <div class="kpi-card" id="kpi-params">
+        <div class="kpi-icon">🧠</div>
+        <div class="kpi-value">128</div>
+        <div class="kpi-label">LSTM Hidden Units</div>
+      </div>
+      <div class="kpi-card" id="kpi-mfcc">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-value">40</div>
+        <div class="kpi-label">MFCC Features</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     PREDICT SECTION
+═══════════════════════════════════════════════════════════ -->
+<section class="section" id="predict">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">🎯 Live Prediction</h2>
+      <p class="section-sub">Upload a WAV / MP3 file to detect the emotion in real time</p>
+    </div>
+
+    <div class="predict-grid">
+      <!-- Upload panel -->
+      <div class="card upload-card">
+        <div class="card-title">Upload Audio</div>
+
+        <div class="dropzone" id="dropzone">
+          <div class="dz-icon">📁</div>
+          <p class="dz-text">Drag & drop your audio file here</p>
+          <p class="dz-sub">WAV · MP3 · FLAC · OGG</p>
+          <button class="btn btn-outline" id="browse-btn" onclick="document.getElementById('file-input').click()">Browse File</button>
+          <input type="file" id="file-input" accept=".wav,.mp3,.flac,.ogg" hidden />
+        </div>
+
+        <div class="file-info hidden" id="file-info">
+          <span class="fi-icon">🎵</span>
+          <div class="fi-details">
+            <span class="fi-name" id="fi-name">—</span>
+            <span class="fi-size" id="fi-size">—</span>
+          </div>
+          <button class="btn-icon" id="clear-file" title="Remove">✕</button>
+        </div>
+
+        <div class="audio-player hidden" id="audio-player-wrap">
+          <audio id="audio-player" controls></audio>
+        </div>
+
+        <button class="btn btn-primary" id="predict-btn" disabled>
+          <span class="btn-text">Analyse Emotion</span>
+          <span class="btn-spinner hidden" id="btn-spinner">⏳</span>
+        </button>
+      </div>
+
+      <!-- Result panel -->
+      <div class="card result-card" id="result-card">
+        <div class="result-placeholder" id="result-placeholder">
+          <div class="rp-icon">🎙️</div>
+          <p>Upload an audio file and click <strong>Analyse Emotion</strong> to see the result here.</p>
+        </div>
+
+        <div class="result-main hidden" id="result-main">
+          <div class="emotion-display" id="emotion-display">
+            <div class="emotion-emoji" id="emo-emoji">😐</div>
+            <div class="emotion-label" id="emo-label">Neutral</div>
+            <div class="confidence-badge" id="conf-badge">
+              Confidence <strong id="conf-pct">—</strong>
+            </div>
+          </div>
+
+          <div class="prob-bars" id="prob-bars"></div>
+
+          <div class="inference-meta">
+            <span>⚡ Inference time: <strong id="infer-ms">—</strong> ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visualisation row -->
+    <div class="viz-row hidden" id="viz-row">
+      <div class="card viz-card">
+        <div class="card-title">🌊 Waveform</div>
+        <img id="waveform-img" class="viz-img" alt="Waveform" />
+      </div>
+      <div class="card viz-card">
+        <div class="card-title">📊 MFCC Features</div>
+        <img id="mfcc-img" class="viz-img" alt="MFCC" />
+      </div>
+      <div class="card viz-card viz-card-wide">
+        <div class="card-title">🔥 Spectrogram</div>
+        <img id="spectrogram-img" class="viz-img" alt="Spectrogram" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TRAINING SECTION
+═══════════════════════════════════════════════════════════ -->
+<section class="section section-alt" id="training">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">📈 Training Metrics</h2>
+      <p class="section-sub">Model performance across 30 epochs on the RAVDESS dataset</p>
+    </div>
+
+    <div class="charts-grid">
+      <div class="card chart-card">
+        <div class="card-title">Model Accuracy</div>
+        <div class="chart-wrap">
+          <canvas id="accuracy-chart"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title">Training Loss</div>
+        <div class="chart-wrap">
+          <canvas id="loss-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Architecture overview -->
+    <div class="card arch-card">
+      <div class="card-title">🏗️ Model Architecture</div>
+      <div class="arch-grid">
+        <div class="arch-layer" id="al-input">
+          <div class="al-icon">📥</div>
+          <div class="al-name">Input</div>
+          <div class="al-detail">(None, 40) MFCC</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-layer" id="al-mask">
+          <div class="al-icon">🎭</div>
+          <div class="al-name">Masking</div>
+          <div class="al-detail">mask_value=0.0</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-layer" id="al-lstm">
+          <div class="al-icon">🧠</div>
+          <div class="al-name">LSTM</div>
+          <div class="al-detail">128 units · dropout 0.3</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-layer" id="al-dense">
+          <div class="al-icon">📤</div>
+          <div class="al-name">Dense</div>
+          <div class="al-detail">24 · softmax</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DATASET SECTION
+═══════════════════════════════════════════════════════════ -->
+<section class="section" id="dataset">
+  <div class="container">
+    <div class="section-header">
+      <h2 class="section-title">🗂️ Dataset Overview</h2>
+      <p class="section-sub">RAVDESS – Ryerson Audio‑Visual Database of Emotional Speech and Song</p>
+    </div>
+
+    <div class="dataset-grid">
+      <!-- Donut chart -->
+      <div class="card">
+        <div class="card-title">Emotion Distribution</div>
+        <div class="chart-wrap chart-donut">
+          <canvas id="donut-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Bar chart -->
+      <div class="card">
+        <div class="card-title">Samples per Emotion</div>
+        <div class="chart-wrap">
+          <canvas id="bar-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Emotion cards grid -->
+      <div class="card emotion-grid-card">
+        <div class="card-title">Emotion Classes</div>
+        <div class="emotion-tiles">
+          {% for emo, emoji in emotion_emoji.items() %}
+          {% if emo != 'Unknown' %}
+          <div class="emo-tile" style="--emo-color: {{ emotion_color[emo] }}">
+            <span class="emo-tile-emoji">{{ emoji }}</span>
+            <span class="emo-tile-name">{{ emo }}</span>
+            <span class="emo-tile-count" id="count-{{ emo }}">—</span>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     FOOTER
+═══════════════════════════════════════════════════════════ -->
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <p>🎙️ EmoSense AI — LSTM Speech Emotion Detection Dashboard</p>
+    <p class="footer-tech">TensorFlow · librosa · Flask · RAVDESS</p>
+  </div>
+</footer>
+
+<!-- Notification toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+// ─── Data from server ────────────────────────────────────────────────────────
+const EMOTION_DIST = {{ emotion_dist | tojson }};
+const EMOTION_COLOR = {{ emotion_color | tojson }};
+const EMOTION_EMOJI = {{ emotion_emoji | tojson }};
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function showToast(msg, type = "info") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `toast toast-${type}`;
+  setTimeout(() => t.classList.add("hidden"), 3200);
+}
+
+function $id(id) { return document.getElementById(id); }
+
+// ─── Counter animation ───────────────────────────────────────────────────────
+document.querySelectorAll(".counter").forEach(el => {
+  const target = +el.dataset.target;
+  let cur = 0;
+  const step = Math.ceil(target / 60);
+  const t = setInterval(() => {
+    cur = Math.min(cur + step, target);
+    el.textContent = cur.toLocaleString();
+    if (cur >= target) clearInterval(t);
+  }, 25);
+});
+
+// ─── Emotion tile counts ─────────────────────────────────────────────────────
+Object.entries(EMOTION_DIST).forEach(([emo, count]) => {
+  const el = document.getElementById("count-" + emo);
+  if (el) el.textContent = count;
+});
+
+// ─── Chart.js shared defaults ────────────────────────────────────────────────
+Chart.defaults.color = "#94a3b8";
+Chart.defaults.borderColor = "#1e293b";
+Chart.defaults.font.family = "Inter, sans-serif";
+
+const EMOTIONS_ORDERED = ["Neutral","Calm","Happy","Sad","Angry","Fearful","Disgust","Surprised"];
+const emoColors = EMOTIONS_ORDERED.map(e => EMOTION_COLOR[e] || "#64748b");
+
+// Donut chart
+(function buildDonut() {
+  const labels = Object.keys(EMOTION_DIST);
+  const data   = Object.values(EMOTION_DIST);
+  const colors = labels.map(l => EMOTION_COLOR[l] || "#64748b");
+  const ctx = $id("donut-chart").getContext("2d");
+  new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: "#0f172a" }]
+    },
+    options: {
+      cutout: "65%",
+      plugins: {
+        legend: { position: "right", labels: { boxWidth: 12, padding: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} samples` } }
+      },
+      animation: { animateRotate: true, duration: 1200 }
+    }
+  });
+})();
+
+// Bar chart
+(function buildBar() {
+  const labels = EMOTIONS_ORDERED.filter(e => EMOTION_DIST[e]);
+  const data   = labels.map(e => EMOTION_DIST[e] || 0);
+  const colors = labels.map(e => EMOTION_COLOR[e] || "#64748b");
+  const ctx = $id("bar-chart").getContext("2d");
+  new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{ label: "Samples", data, backgroundColor: colors, borderRadius: 6, borderSkipped: false }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: "#1e293b" }, ticks: { color: "#94a3b8" } },
+        y: { grid: { color: "#1e293b" }, ticks: { color: "#94a3b8" }, beginAtZero: true }
+      },
+      animation: { duration: 1200 }
+    }
+  });
+})();
+
+// Training charts (async)
+let accChart, lossChart;
+(async function buildTraining() {
+  const res  = await fetch("/api/training-history");
+  const hist = await res.json();
+  const epochs = Array.from({ length: hist.accuracy.length }, (_, i) => i + 1);
+
+  const lineOpts = (label1, data1, label2, data2, col1, col2) => ({
+    type: "line",
+    data: {
+      labels: epochs,
+      datasets: [
+        { label: label1, data: data1, borderColor: col1, backgroundColor: col1 + "22",
+          borderWidth: 2.5, pointRadius: 0, fill: true, tension: 0.35 },
+        { label: label2, data: data2, borderColor: col2, backgroundColor: col2 + "22",
+          borderWidth: 2.5, pointRadius: 0, fill: true, tension: 0.35, borderDash: [5,3] }
+      ]
+    },
+    options: {
+      plugins: { legend: { labels: { boxWidth: 12, font: { size: 12 } } } },
+      scales: {
+        x: { grid: { color: "#1e293b" }, ticks: { color: "#94a3b8" }, title: { display: true, text: "Epoch", color: "#64748b" } },
+        y: { grid: { color: "#1e293b" }, ticks: { color: "#94a3b8" } }
+      },
+      interaction: { mode: "index", intersect: false },
+      animation: { duration: 1000 }
+    }
+  });
+
+  accChart  = new Chart($id("accuracy-chart").getContext("2d"),
+    lineOpts("Train Accuracy", hist.accuracy, "Val Accuracy", hist.val_accuracy, "#6366f1", "#f59e0b"));
+  lossChart = new Chart($id("loss-chart").getContext("2d"),
+    lineOpts("Train Loss", hist.loss, "Val Loss", hist.val_loss, "#f87171", "#67e8f9"));
+})();
+
+// ─── File Upload & Prediction ─────────────────────────────────────────────────
+const dropzone   = $id("dropzone");
+const fileInput  = $id("file-input");
+const fileInfo   = $id("file-info");
+const fiName     = $id("fi-name");
+const fiSize     = $id("fi-size");
+const clearBtn   = $id("clear-file");
+const predictBtn = $id("predict-btn");
+const audioWrap  = $id("audio-player-wrap");
+const audioEl    = $id("audio-player");
+let selectedFile = null;
+
+function formatBytes(b) {
+  if (b < 1024)       return b + " B";
+  if (b < 1048576)    return (b / 1024).toFixed(1) + " KB";
+  return (b / 1048576).toFixed(2) + " MB";
+}
+
+function setFile(file) {
+  selectedFile = file;
+  fiName.textContent = file.name;
+  fiSize.textContent = formatBytes(file.size);
+  dropzone.classList.add("hidden");
+  fileInfo.classList.remove("hidden");
+  audioWrap.classList.remove("hidden");
+  audioEl.src = URL.createObjectURL(file);
+  predictBtn.disabled = false;
+}
+
+function clearFile() {
+  selectedFile = null;
+  fileInput.value = "";
+  dropzone.classList.remove("hidden");
+  fileInfo.classList.add("hidden");
+  audioWrap.classList.add("hidden");
+  audioEl.src = "";
+  predictBtn.disabled = true;
+  $id("result-placeholder").classList.remove("hidden");
+  $id("result-main").classList.add("hidden");
+  $id("viz-row").classList.add("hidden");
+}
+
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+clearBtn.addEventListener("click", clearFile);
+
+dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag-over"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropzone.classList.remove("drag-over");
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+
+// Prediction request
+predictBtn.addEventListener("click", async () => {
+  if (!selectedFile) return;
+  const btnText    = predictBtn.querySelector(".btn-text");
+  const btnSpinner = $id("btn-spinner");
+  predictBtn.disabled = true;
+  btnText.textContent = "Analysing…";
+  btnSpinner.classList.remove("hidden");
+
+  const fd = new FormData();
+  fd.append("audio", selectedFile);
+
+  try {
+    const res  = await fetch("/api/predict", { method: "POST", body: fd });
+    const data = await res.json();
+
+    if (data.error) { showToast("❌ " + data.error, "error"); return; }
+
+    // Update result panel
+    $id("result-placeholder").classList.add("hidden");
+    $id("result-main").classList.remove("hidden");
+
+    const ed = $id("emotion-display");
+    ed.style.setProperty("--emo-glow", data.color);
+    $id("emo-emoji").textContent  = data.emoji;
+    $id("emo-label").textContent  = data.emotion;
+    $id("conf-badge").style.color = data.color;
+    $id("conf-pct").textContent   = data.confidence + "%";
+    $id("infer-ms").textContent   = data.inference_ms;
+
+    // Probability bars
+    const pbContainer = $id("prob-bars");
+    pbContainer.innerHTML = "";
+    const sorted = Object.entries(data.emo_probs).sort((a, b) => b[1] - a[1]);
+    sorted.forEach(([emo, pct]) => {
+      const color = EMOTION_COLOR[emo] || "#64748b";
+      const row = document.createElement("div");
+      row.className = "prob-row";
+      row.innerHTML = `
+        <span class="prob-emo">${EMOTION_EMOJI[emo] || ""} ${emo}</span>
+        <div class="prob-bar-wrap">
+          <div class="prob-bar-fill" style="width:0%;background:${color}" data-pct="${pct}"></div>
+        </div>
+        <span class="prob-pct">${pct.toFixed(1)}%</span>`;
+      pbContainer.appendChild(row);
+    });
+    requestAnimationFrame(() => {
+      document.querySelectorAll(".prob-bar-fill").forEach(el => {
+        el.style.width = el.dataset.pct + "%";
+      });
+    });
+
+    // Visualisations
+    $id("viz-row").classList.remove("hidden");
+    $id("waveform-img").src     = "data:image/png;base64," + data.waveform;
+    $id("mfcc-img").src         = "data:image/png;base64," + data.mfcc;
+    $id("spectrogram-img").src  = "data:image/png;base64," + data.spectrogram;
+
+    showToast("✅ Emotion detected: " + data.emotion, "success");
+
+  } catch (err) {
+    showToast("❌ Network error: " + err.message, "error");
+  } finally {
+    predictBtn.disabled = false;
+    btnText.textContent = "Analyse Emotion";
+    btnSpinner.classList.add("hidden");
+  }
+});
+
+// ─── Smooth nav ──────────────────────────────────────────────────────────────
+document.querySelectorAll(".nav-link").forEach(link => {
+  link.addEventListener("click", e => {
+    e.preventDefault();
+    document.querySelectorAll(".nav-link").forEach(l => l.classList.remove("active"));
+    link.classList.add("active");
+    const target = document.querySelector(link.getAttribute("href"));
+    if (target) target.scrollIntoView({ behavior: "smooth" });
+  });
+});
+</script>
+</body>
+</html>
